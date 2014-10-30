@@ -10,7 +10,7 @@ using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using Device = SharpDX.Direct3D11.Device;
 using MapFlags = SharpDX.Direct3D11.MapFlags;
-using Rectangle = System.Drawing.Rectangle;
+using Rectangle = SharpDX.Rectangle;
 using Resource = SharpDX.DXGI.Resource;
 using ResultCode = SharpDX.DXGI.ResultCode;
 
@@ -27,10 +27,13 @@ namespace DXGI_DesktopDuplication
         {
             InitializeComponent();
 
+            Console.WriteLine("{0}, {1}", SystemParameters.WorkArea.Width, SystemParameters.WorkArea.Height);
+            Console.WriteLine("{0}, {1}", SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+
             //todo test code here
             //Capture();
             FrameData data;
-            new DuplicationManager().GetFrame(out  data);
+            new DuplicationManager().GetFrame(out data);
 
             //Debug.WriteLine("size = {0}", Marshal.SizeOf(typeof(OutputDuplicateMoveRectangle)));
         }
@@ -122,7 +125,7 @@ namespace DXGI_DesktopDuplication
 
                         // Create Drawing.Bitmap
                         var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                        var boundsRect = new Rectangle(0, 0, width, height);
+                        var boundsRect = new System.Drawing.Rectangle(0, 0, width, height);
 
                         // Copy pixels from screen capture Texture to GDI bitmap
                         BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
@@ -170,11 +173,12 @@ namespace DXGI_DesktopDuplication
 
     public struct FrameData
     {
-        public OutputDuplicateMoveRectangle[] MoveRectangles;
-        public SharpDX.Rectangle[] DirtyRectangles;
+        public int DirtyCount;
+        public Rectangle[] DirtyRectangles;
         public Texture2D Frame;
         public OutputDuplicateFrameInformation FrameInfo;
-        
+        public int MoveCount;
+        public OutputDuplicateMoveRectangle[] MoveRectangles;
     }
 
     //[Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c")]
@@ -183,6 +187,7 @@ namespace DXGI_DesktopDuplication
         private Device device;
         private OutputDuplication duplicatedOutput;
         private int height;
+        private Texture2D screenTexture;
         private Texture2DDescription textureDesc;
         private int width;
         //private Texture2D acquiredDesktopImage = null;
@@ -233,6 +238,8 @@ namespace DXGI_DesktopDuplication
 
             // Duplicate the output
             duplicatedOutput = output1.DuplicateOutput(device);
+
+            screenTexture = new Texture2D(device, textureDesc);
         }
 
         public void GetFrame
@@ -243,8 +250,6 @@ namespace DXGI_DesktopDuplication
             for (int i = 0; !captureDone; i++)
                 try
                 {
-                    var screenTexture = new Texture2D(device, textureDesc);
-
                     Resource screenResource;
                     OutputDuplicateFrameInformation duplicateFrameInformation;
 
@@ -258,39 +263,62 @@ namespace DXGI_DesktopDuplication
                         // copy resource into memory that can be accessed by the CPU
                         using (var screenTexture2D = screenResource.QueryInterface<Texture2D>())
                             device.ImmediateContext.CopyResource(screenTexture2D, screenTexture);
+                        screenResource.Dispose();
+
 
                         //TODO
-                        Debug.WriteLine("START------");
+                        Console.WriteLine("START------");
+
                         #region new code added here
 
                         int bufSize = duplicateFrameInformation.TotalMetadataBufferSize;
+
+                        if (bufSize <= 0) continue;
+
                         var moveRectangles =
-                            new OutputDuplicateMoveRectangle[
-                                bufSize/Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle))];
+                            new OutputDuplicateMoveRectangle
+                                [
+                                (int)
+                                    Math.Ceiling((double) bufSize/Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)))
+                                ];
+
+                        Console.WriteLine("Move : {0}  {1}  {2}  {3}", moveRectangles.Length, bufSize,
+                            Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)),
+                            bufSize/Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)));
+
                         //get move rects
-                        duplicatedOutput.GetFrameMoveRects(bufSize, moveRectangles, out bufSize);
+                        if (moveRectangles.Length > 0)
+                            duplicatedOutput.GetFrameMoveRects(bufSize, moveRectangles, out bufSize);
+
                         data.MoveRectangles = moveRectangles;
+                        data.MoveCount = bufSize;
+
 
                         bufSize = duplicateFrameInformation.TotalMetadataBufferSize - bufSize;
-                        var dirtyRectangles = new SharpDX.Rectangle[bufSize / Marshal.SizeOf(typeof(Rectangle))];
+                        var dirtyRectangles = new Rectangle[bufSize/Marshal.SizeOf(typeof (Rectangle))];
+                        Console.WriteLine("Dirty : {0}  {1}  {2}  {3}", dirtyRectangles.Length, bufSize,
+                            Marshal.SizeOf(typeof (Rectangle)), bufSize/Marshal.SizeOf(typeof (Rectangle)));
                         //get dirty rects
-                        duplicatedOutput.GetFrameDirtyRects(bufSize, dirtyRectangles, out bufSize);
+                        if (dirtyRectangles.Length > 0)
+                            duplicatedOutput.GetFrameDirtyRects(bufSize, dirtyRectangles, out bufSize);
                         data.DirtyRectangles = dirtyRectangles;
+                        data.DirtyCount = bufSize;
 
                         data.Frame = screenTexture;
                         data.FrameInfo = duplicateFrameInformation;
-                        
+
                         #endregion
-                        Debug.WriteLine("DONE ----------");
+
+                        Console.WriteLine("DONE ----------");
                         //TODO
-                        
+
                         // Get the desktop capture texture
                         DataBox mapSource = device.ImmediateContext.MapSubresource(screenTexture, 0, MapMode.Read,
                             MapFlags.None);
 
                         // Create Drawing.Bitmap
                         var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                        var boundsRect = new Rectangle(0, 0, width, height);
+                        var boundsRect = new System.Drawing.Rectangle(0, 0, width, height);
 
                         // Copy pixels from screen capture Texture to GDI bitmap
                         BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
@@ -318,21 +346,21 @@ namespace DXGI_DesktopDuplication
                     }
 
 
-                    screenTexture.Dispose();
+                    //screenTexture.Dispose();
 
-                    screenResource.Dispose();
+
                     duplicatedOutput.ReleaseFrame();
                 }
                 catch (SharpDXException e)
                 {
                     if (e.ResultCode.Code != ResultCode.WaitTimeout.Result.Code)
                     {
-                        throw e;
+                        Debug.WriteLine(e.Descriptor);
                     }
                 }
 
             // Display the texture using system associated viewer
-            //Process.Start(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "save.bmp")));
+            Process.Start(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "save.bmp")));
         }
     }
 }
