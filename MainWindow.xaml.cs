@@ -41,14 +41,13 @@ namespace DXGI_DesktopDuplication
             //TODO
         }
 
-       
 
         public void CaptureFrame()
         {
             FrameData frameData;
 
             duplicationManager.GetFrame(out frameData);
-           // duplicationManager.GetChangedRects(ref frameData); //TODO pending
+            // duplicationManager.GetChangedRects(ref frameData); //TODO pending
         }
 
 
@@ -85,6 +84,36 @@ namespace DXGI_DesktopDuplication
     public class DisplayManager
     {
         public void ProcessFrame(FrameData data, ref Texture2D sharedSurface, OutputDescription desktopDescription)
+        {
+            //TODO
+
+            if (data.FrameInfo.TotalMetadataBufferSize > 0)
+            {
+                Texture2DDescription description = data.Frame.Description;
+
+                if (data.MoveCount > 0)
+                {
+                    CopyMoveRects(ref sharedSurface, data, desktopDescription, description.Width, description.Height);
+                }
+
+                if (data.DirtyCount > 0)
+                {
+                    CopyDirtyRects(data.Frame, ref sharedSurface, data.DirtyRectangles, data.DirtyCount,
+                        desktopDescription);
+                }
+            }
+        }
+
+        private void CopyMoveRects(ref Texture2D sharedSurface, FrameData data, OutputDescription desktopDescription,
+            int texWidth, int texHieght)
+        {
+            //TODO
+
+
+        }
+
+        private void CopyDirtyRects(Texture2D sourceSurface, ref Texture2D sharedSurface, Rectangle[] dirtyrRectangles,
+            int dirtyCount, OutputDescription desktopDescription)
         {
             //TODO
         }
