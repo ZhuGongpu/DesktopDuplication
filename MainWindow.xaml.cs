@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
@@ -14,14 +15,19 @@ namespace DXGI_DesktopDuplication
     {
         private readonly DuplicationManager duplicationManager = null;
 
-
         public static UpdateUI RefreshUI;
+
+        private Thread duplicateThread = null;
 
         public MainWindow()
         {
             InitializeComponent();
 
+            
+            
             RefreshUI = UpdateImage;
+
+            duplicateThread = new Thread(Demo);
 
             //test code here
             Console.WriteLine("{0}, {1}", SystemParameters.WorkArea.Width, SystemParameters.WorkArea.Height);
@@ -42,6 +48,18 @@ namespace DXGI_DesktopDuplication
         }
 
 
+        public void Demo()
+        {
+            
+            while (Thread.CurrentThread.IsAlive)
+            {
+                CapturedChangedRects();
+                Console.WriteLine("Capture");
+            }
+
+            Console.WriteLine("Exited");
+        }
+
         public void CaptureFrame()
         {
             FrameData frameData;
@@ -61,9 +79,15 @@ namespace DXGI_DesktopDuplication
         {
             //TODO test code here
 
+            if (duplicateThread.ThreadState == ThreadState.Unstarted)
+            {
+                duplicateThread.Start();
+                Console.WriteLine("Start");
+            }
 
-            CapturedChangedRects();
-            Console.WriteLine("Click");
+
+           // CapturedChangedRects();
+            //Console.WriteLine("Click");
             //CaptureFrame();//TODO 已知bug：只有写成CaptureFrame时不会抛异常
         }
 

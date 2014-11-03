@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using SharpDX;
@@ -16,7 +17,14 @@ namespace DXGI_DesktopDuplication
 {
     public class DuplicationManager
     {
-        private const int TIME_OUT = 150;
+        /// <summary>
+        ///     If the caller specifies a zero time-out interval in the TimeoutInMilliseconds parameter, AcquireNextFrame verifies
+        ///     whether there is a new desktop image available, returns immediately, and indicates its outcome with the return
+        ///     value. If the caller specifies an INFINITE time-out interval in the TimeoutInMilliseconds parameter, the time-out
+        ///     interval never elapses
+        /// </summary>
+        private const int TIME_OUT = 0;
+
         private static int counter;
         private static readonly DuplicationManager instance = new DuplicationManager();
 
@@ -82,7 +90,7 @@ namespace DXGI_DesktopDuplication
 
             outputDescription = output.Description;
 
-            // Duplicate the output
+            // Demo the output
             duplicatedOutput = output1.DuplicateOutput(device);
 
             screenTexture = new Texture2D(device, textureDesc);
@@ -168,6 +176,22 @@ namespace DXGI_DesktopDuplication
                         if (i > 0)
                         {
                             GetDirtyAndMoveRects(ref data, screenResource, duplicateFrameInformation);
+
+
+                            //display results
+                            if (data.MoveRectangles != null)
+                                foreach (OutputDuplicateMoveRectangle moveRectangle in data.MoveRectangles)
+                                {
+                                    Console.WriteLine("MoveRectangle : {0}", (moveRectangle.DestinationRect));
+                                }
+
+                            if (data.DirtyRectangles != null)
+                                foreach (Rectangle dirtyRectangle in data.DirtyRectangles)
+                                {
+                                    Console.WriteLine("DirtyRectangle : {0}    Size : {1}", 
+                                        dirtyRectangle, dirtyRectangle.Size.Height * dirtyRectangle.Size.Width);
+                                }
+
 
                             if (dispatcher != null)
                                 dispatcher.BeginInvoke(MainWindow.RefreshUI,
