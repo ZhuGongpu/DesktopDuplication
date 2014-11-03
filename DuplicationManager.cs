@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using SharpDX;
@@ -185,17 +184,23 @@ namespace DXGI_DesktopDuplication
                                     Console.WriteLine("MoveRectangle : {0}", (moveRectangle.DestinationRect));
                                 }
 
+                            int subCounter = 0;
+
                             if (data.DirtyRectangles != null)
                                 foreach (Rectangle dirtyRectangle in data.DirtyRectangles)
                                 {
-                                    Console.WriteLine("DirtyRectangle : {0}    Size : {1}", 
-                                        dirtyRectangle, dirtyRectangle.Size.Height * dirtyRectangle.Size.Width);
-                                }
+                                    Console.WriteLine("DirtyRectangle : {0}    Size : {1}",
+                                        dirtyRectangle, dirtyRectangle.Size.Height*dirtyRectangle.Size.Width);
 
+                                    ExtractRect(dirtyRectangle.X, dirtyRectangle.Y, dirtyRectangle.Width,
+                                        dirtyRectangle.Height).Save("dirty" + (counter) + "-" + (subCounter++) + ".jpg");
+                                }
+                            counter++;
 
                             if (dispatcher != null)
                                 dispatcher.BeginInvoke(MainWindow.RefreshUI,
                                     Texture2DToBitmap());
+
 
                             captured = true;
                         }
@@ -258,6 +263,42 @@ namespace DXGI_DesktopDuplication
 
         public Bitmap Texture2DToBitmap()
         {
+
+            return ExtractRect(0, 0, width, height);
+
+            // Get the desktop capture screenTexture
+            //DataBox mapSource = device.ImmediateContext.MapSubresource(screenTexture, 0, MapMode.Read,
+            //    MapFlags.None);
+
+            //// Create Drawing.Bitmap
+
+            //var bitmap = new Bitmap(width, height, PixelFormat.Format32bppRgb); //不能是ARGB
+            //var boundsRect = new System.Drawing.Rectangle(0, 0, width, height);
+
+            //// Copy pixels from screen capture Texture to GDI bitmap
+            //BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
+            //IntPtr sourcePtr = mapSource.DataPointer;
+            //IntPtr destPtr = mapDest.Scan0;
+            //for (int y = 0; y < height; y++)
+            //{
+            //    // Copy a single line 
+            //    Utilities.CopyMemory(destPtr, sourcePtr, width*4);
+
+            //    // Advance pointers
+            //    sourcePtr = IntPtr.Add(sourcePtr, mapSource.RowPitch);
+            //    destPtr = IntPtr.Add(destPtr, mapDest.Stride);
+            //}
+
+            //// Release source and dest locks
+            //bitmap.UnlockBits(mapDest);
+            //device.ImmediateContext.UnmapSubresource(screenTexture, 0);
+
+            //return bitmap;
+        }
+
+        //TODO copy bitmap的指定区域
+        public Bitmap ExtractRect(int originX, int originY, int width, int height)
+        {
             // Get the desktop capture screenTexture
             DataBox mapSource = device.ImmediateContext.MapSubresource(screenTexture, 0, MapMode.Read,
                 MapFlags.None);
@@ -271,10 +312,10 @@ namespace DXGI_DesktopDuplication
             BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
             IntPtr sourcePtr = mapSource.DataPointer;
             IntPtr destPtr = mapDest.Scan0;
-            for (int y = 0; y < height; y++)
+            for (int y = originY; y < originY + height; y++)
             {
                 // Copy a single line 
-                Utilities.CopyMemory(destPtr, sourcePtr, width*4);
+                Utilities.CopyMemory(destPtr, IntPtr.Add(sourcePtr, originX*4), width*4);
 
                 // Advance pointers
                 sourcePtr = IntPtr.Add(sourcePtr, mapSource.RowPitch);
