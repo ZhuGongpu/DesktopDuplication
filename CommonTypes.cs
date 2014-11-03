@@ -1,11 +1,15 @@
-﻿using System.IO;
+﻿using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
-using SharpDX;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
+using Rectangle = SharpDX.Rectangle;
 
 namespace DXGI_DesktopDuplication
 {
+
+    public delegate void UpdateUI(Bitmap bitmap);
+
     public class FrameData
     {
         public int DirtyCount;

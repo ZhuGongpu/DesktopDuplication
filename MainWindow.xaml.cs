@@ -1,16 +1,9 @@
 ﻿using System;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows;
-using SharpDX;
-using SharpDX.Direct3D11;
-using SharpDX.DXGI;
-using Device = SharpDX.Direct3D11.Device;
-using MapFlags = SharpDX.Direct3D11.MapFlags;
-using Rectangle = SharpDX.Rectangle;
-using Resource = SharpDX.DXGI.Resource;
-using ResultCode = SharpDX.DXGI.ResultCode;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
 
 namespace DXGI_DesktopDuplication
 {
@@ -19,18 +12,24 @@ namespace DXGI_DesktopDuplication
     /// </summary>
     public partial class MainWindow : Window
     {
-        private readonly DuplicationManager duplicationManager = DuplicationManager.getInstance();
+        private readonly DuplicationManager duplicationManager = null;
 
+
+        public static UpdateUI RefreshUI;
 
         public MainWindow()
         {
             InitializeComponent();
+
+            RefreshUI = UpdateImage;
 
             //test code here
             Console.WriteLine("{0}, {1}", SystemParameters.WorkArea.Width, SystemParameters.WorkArea.Height);
             Console.WriteLine("{0}, {1}", SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
 
             Console.WriteLine(Marshal.SizeOf(typeof (Vertex)));
+
+            duplicationManager = DuplicationManager.GetInstance(Dispatcher);
 
             CaptureFrame();
         }
@@ -62,12 +61,23 @@ namespace DXGI_DesktopDuplication
         {
             //TODO test code here
 
-            
 
             CapturedChangedRects();
             Console.WriteLine("Click");
             //CaptureFrame();//TODO 已知bug：只有写成CaptureFrame时不会抛异常
         }
-    }
 
+        [DllImport("gdi32")]
+        private static extern int DeleteObject(IntPtr o);
+
+
+        public void UpdateImage(Bitmap bitmap)
+        {
+            IntPtr pointer = bitmap.GetHbitmap();
+
+            Image.Source = Imaging.CreateBitmapSourceFromHBitmap(pointer, IntPtr.Zero, Int32Rect.Empty,
+                BitmapSizeOptions.FromEmptyOptions());
+            DeleteObject(pointer);
+        }
+    }
 }

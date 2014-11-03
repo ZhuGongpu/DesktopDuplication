@@ -2,6 +2,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Windows.Threading;
 using SharpDX;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
@@ -20,6 +21,7 @@ namespace DXGI_DesktopDuplication
         private static readonly DuplicationManager instance = new DuplicationManager();
 
         private Device device;
+        private Dispatcher dispatcher;
         private OutputDuplication duplicatedOutput;
         private int height;
         private OutputDescription outputDescription;
@@ -28,14 +30,14 @@ namespace DXGI_DesktopDuplication
         private int width;
         //private Texture2D acquiredDesktopImage = null;
 
-
         private DuplicationManager()
         {
             Init();
         }
 
-        public static DuplicationManager getInstance()
+        public static DuplicationManager GetInstance(Dispatcher dispatcher)
         {
+            instance.SetDispatcher(dispatcher);
             return instance;
         }
 
@@ -63,7 +65,7 @@ namespace DXGI_DesktopDuplication
             width = output.Description.DesktopBounds.Width;
             height = output.Description.DesktopBounds.Height;
 
-            // Create Staging texture CPU-accessible
+            // Create Staging screenTexture CPU-accessible
             textureDesc = new Texture2DDescription
             {
                 CpuAccessFlags = CpuAccessFlags.Read,
@@ -137,6 +139,12 @@ namespace DXGI_DesktopDuplication
             data.FrameInfo = duplicateFrameInformation;
         }
 
+
+        public void SetDispatcher(Dispatcher dispatcher)
+        {
+            this.dispatcher = dispatcher;
+        }
+
         /// <summary>
         /// </summary>
         /// <param name="data"></param>
@@ -160,6 +168,10 @@ namespace DXGI_DesktopDuplication
                         if (i > 0)
                         {
                             GetDirtyAndMoveRects(ref data, screenResource, duplicateFrameInformation);
+
+                            if (dispatcher != null)
+                                dispatcher.BeginInvoke(MainWindow.RefreshUI,
+                                    Texture2DToBitmap());
 
                             captured = true;
                         }
@@ -194,32 +206,8 @@ namespace DXGI_DesktopDuplication
                                 device.ImmediateContext.CopyResource(screenTexture2D, screenTexture);
                             screenResource.Dispose();
 
-                            // Get the desktop capture texture
-                            DataBox mapSource = device.ImmediateContext.MapSubresource(screenTexture, 0, MapMode.Read,
-                                MapFlags.None);
 
-                            // Create Drawing.Bitmap
-
-                            var bitmap = new Bitmap(width, height, PixelFormat.Format32bppRgb); //不能是ARGB
-                            var boundsRect = new System.Drawing.Rectangle(0, 0, width, height);
-
-                            // Copy pixels from screen capture Texture to GDI bitmap
-                            BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
-                            IntPtr sourcePtr = mapSource.DataPointer;
-                            IntPtr destPtr = mapDest.Scan0;
-                            for (int y = 0; y < height; y++)
-                            {
-                                // Copy a single line 
-                                Utilities.CopyMemory(destPtr, sourcePtr, width*4);
-
-                                // Advance pointers
-                                sourcePtr = IntPtr.Add(sourcePtr, mapSource.RowPitch);
-                                destPtr = IntPtr.Add(destPtr, mapDest.Stride);
-                            }
-
-                            // Release source and dest locks
-                            bitmap.UnlockBits(mapDest);
-                            device.ImmediateContext.UnmapSubresource(screenTexture, 0);
+                            Bitmap bitmap = Texture2DToBitmap();
 
                             // Save the output
                             bitmap.Save("save" + (counter++) + ".bmp");
@@ -240,8 +228,40 @@ namespace DXGI_DesktopDuplication
                         }
                     }
 
-            // Display the texture using system associated viewer
+            // Display the screenTexture using system associated viewer
             //Process.Start(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "save.bmp")));
+        }
+
+        public Bitmap Texture2DToBitmap()
+        {
+            // Get the desktop capture screenTexture
+            DataBox mapSource = device.ImmediateContext.MapSubresource(screenTexture, 0, MapMode.Read,
+                MapFlags.None);
+
+            // Create Drawing.Bitmap
+
+            var bitmap = new Bitmap(width, height, PixelFormat.Format32bppRgb); //不能是ARGB
+            var boundsRect = new System.Drawing.Rectangle(0, 0, width, height);
+
+            // Copy pixels from screen capture Texture to GDI bitmap
+            BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
+            IntPtr sourcePtr = mapSource.DataPointer;
+            IntPtr destPtr = mapDest.Scan0;
+            for (int y = 0; y < height; y++)
+            {
+                // Copy a single line 
+                Utilities.CopyMemory(destPtr, sourcePtr, width*4);
+
+                // Advance pointers
+                sourcePtr = IntPtr.Add(sourcePtr, mapSource.RowPitch);
+                destPtr = IntPtr.Add(destPtr, mapDest.Stride);
+            }
+
+            // Release source and dest locks
+            bitmap.UnlockBits(mapDest);
+            device.ImmediateContext.UnmapSubresource(screenTexture, 0);
+
+            return bitmap;
         }
     }
 }
