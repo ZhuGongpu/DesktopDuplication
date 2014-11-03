@@ -91,6 +91,52 @@ namespace DXGI_DesktopDuplication
             return outputDescription;
         }
 
+        private void GetDirtyAndMoveRects(ref FrameData data, Resource screenResource,
+            OutputDuplicateFrameInformation duplicateFrameInformation)
+        {
+            //copy resource into memory that can be accessed by the CPU
+            using (var screenTexture2D = screenResource.QueryInterface<Texture2D>())
+                device.ImmediateContext.CopyResource(screenTexture2D, screenTexture);
+            screenResource.Dispose();
+
+            int bufSize = duplicateFrameInformation.TotalMetadataBufferSize;
+
+            if (bufSize <= 0) return;
+
+            var moveRectangles =
+                new OutputDuplicateMoveRectangle
+                    [
+                    (int)
+                        Math.Ceiling((double) bufSize/
+                                     Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)))
+                    ];
+
+            Console.WriteLine("Move : {0}  {1}  {2}  {3}", moveRectangles.Length, bufSize,
+                Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)),
+                bufSize/Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)));
+
+            //get move rects
+            if (moveRectangles.Length > 0)
+                duplicatedOutput.GetFrameMoveRects(bufSize, moveRectangles, out bufSize);
+
+            data.MoveRectangles = moveRectangles;
+            data.MoveCount = bufSize;
+
+            bufSize = duplicateFrameInformation.TotalMetadataBufferSize - bufSize;
+            var dirtyRectangles = new Rectangle[bufSize/Marshal.SizeOf(typeof (Rectangle))];
+            Console.WriteLine("Dirty : {0}  {1}  {2}  {3}", dirtyRectangles.Length, bufSize,
+                Marshal.SizeOf(typeof (Rectangle)), bufSize/Marshal.SizeOf(typeof (Rectangle)));
+            //get dirty rects
+            if (dirtyRectangles.Length > 0)
+                duplicatedOutput.GetFrameDirtyRects(bufSize, dirtyRectangles, out bufSize);
+            data.DirtyRectangles = dirtyRectangles;
+            data.DirtyCount = bufSize;
+
+            data.Frame = screenTexture;
+
+            data.FrameInfo = duplicateFrameInformation;
+        }
+
         /// <summary>
         /// </summary>
         /// <param name="data"></param>
@@ -100,135 +146,99 @@ namespace DXGI_DesktopDuplication
                 data = new FrameData();
 
             bool captured = false;
-            for (int i = 0; !captured; i++)
-            {
-                try
+            lock (duplicatedOutput)
+                for (int i = 0; !captured; i++)
                 {
-                    Resource screenResource;
-                    OutputDuplicateFrameInformation duplicateFrameInformation;
-
-                    //try to get duplicated frame within given time
-                    duplicatedOutput.AcquireNextFrame(TIME_OUT, out duplicateFrameInformation, out screenResource);
-
-                    if (i > 0)
+                    try
                     {
-                        //copy resource into memory that can be accessed by the CPU
-                        using (var screenTexture2D = screenResource.QueryInterface<Texture2D>())
-                            device.ImmediateContext.CopyResource(screenTexture2D, screenTexture);
-                        screenResource.Dispose();
+                        Resource screenResource;
+                        OutputDuplicateFrameInformation duplicateFrameInformation;
 
-                        int bufSize = duplicateFrameInformation.TotalMetadataBufferSize;
+                        //try to get duplicated frame within given time
+                        duplicatedOutput.AcquireNextFrame(TIME_OUT, out duplicateFrameInformation, out screenResource);
 
-                        if (bufSize <= 0) continue;
+                        if (i > 0)
+                        {
+                            GetDirtyAndMoveRects(ref data, screenResource, duplicateFrameInformation);
 
-                        var moveRectangles =
-                            new OutputDuplicateMoveRectangle
-                                [
-                                (int)
-                                    Math.Ceiling((double) bufSize/Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)))
-                                ];
-
-                        Console.WriteLine("Move : {0}  {1}  {2}  {3}", moveRectangles.Length, bufSize,
-                            Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)),
-                            bufSize/Marshal.SizeOf(typeof (OutputDuplicateMoveRectangle)));
-
-                        //get move rects
-                        if (moveRectangles.Length > 0)
-                            duplicatedOutput.GetFrameMoveRects(bufSize, moveRectangles, out bufSize);
-
-                        data.MoveRectangles = moveRectangles;
-                        data.MoveCount = bufSize;
-
-                        bufSize = duplicateFrameInformation.TotalMetadataBufferSize - bufSize;
-                        var dirtyRectangles = new Rectangle[bufSize/Marshal.SizeOf(typeof (Rectangle))];
-                        Console.WriteLine("Dirty : {0}  {1}  {2}  {3}", dirtyRectangles.Length, bufSize,
-                            Marshal.SizeOf(typeof (Rectangle)), bufSize/Marshal.SizeOf(typeof (Rectangle)));
-                        //get dirty rects
-                        if (dirtyRectangles.Length > 0)
-                            duplicatedOutput.GetFrameDirtyRects(bufSize, dirtyRectangles, out bufSize);
-                        data.DirtyRectangles = dirtyRectangles;
-                        data.DirtyCount = bufSize;
-
-                        data.Frame = screenTexture;
-
-                        data.FrameInfo = duplicateFrameInformation;
-
-                        captured = true;
+                            captured = true;
+                        }
+                        duplicatedOutput.ReleaseFrame();
                     }
-                    duplicatedOutput.ReleaseFrame();
+                    catch (SharpDXException e)
+                    {
+                        if (e.ResultCode.Code != ResultCode.WaitTimeout.Result.Code)
+                            Console.WriteLine("GetChangedRects : {0}", e.Message);
+                    }
                 }
-                catch (SharpDXException e)
-                {
-                    if (e.ResultCode.Code != ResultCode.WaitTimeout.Result.Code)
-                        Console.WriteLine("GetChangedRects : {0}", e.Message);
-                }
-            }
         }
 
         public void GetFrame(out FrameData data)
         {
             data = new FrameData();
             bool captureDone = false;
-            for (int i = 0; !captureDone; i++)
-                try
-                {
-                    Resource screenResource;
-                    OutputDuplicateFrameInformation duplicateFrameInformation;
-
-                    // Try to get duplicated frame within given time
-                    duplicatedOutput.AcquireNextFrame(TIME_OUT, out duplicateFrameInformation, out screenResource);
-
-                    if (i > 0)
+            lock (duplicatedOutput)
+                for (int i = 0; !captureDone; i++)
+                    try
                     {
-                        // copy resource into memory that can be accessed by the CPU
-                        using (var screenTexture2D = screenResource.QueryInterface<Texture2D>())
-                            device.ImmediateContext.CopyResource(screenTexture2D, screenTexture);
-                        screenResource.Dispose();
+                        Resource screenResource;
+                        OutputDuplicateFrameInformation duplicateFrameInformation;
 
-                        // Get the desktop capture texture
-                        DataBox mapSource = device.ImmediateContext.MapSubresource(screenTexture, 0, MapMode.Read,
-                            MapFlags.None);
+                        // Try to get duplicated frame within given time
+                        duplicatedOutput.AcquireNextFrame(TIME_OUT, out duplicateFrameInformation, out screenResource);
 
-                        // Create Drawing.Bitmap
-                        var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                        var boundsRect = new System.Drawing.Rectangle(0, 0, width, height);
-
-                        // Copy pixels from screen capture Texture to GDI bitmap
-                        BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
-                        IntPtr sourcePtr = mapSource.DataPointer;
-                        IntPtr destPtr = mapDest.Scan0;
-                        for (int y = 0; y < height; y++)
+                        if (i > 0)
                         {
-                            // Copy a single line 
-                            Utilities.CopyMemory(destPtr, sourcePtr, width*4);
+                            // copy resource into memory that can be accessed by the CPU
+                            using (var screenTexture2D = screenResource.QueryInterface<Texture2D>())
+                                device.ImmediateContext.CopyResource(screenTexture2D, screenTexture);
+                            screenResource.Dispose();
 
-                            // Advance pointers
-                            sourcePtr = IntPtr.Add(sourcePtr, mapSource.RowPitch);
-                            destPtr = IntPtr.Add(destPtr, mapDest.Stride);
+                            // Get the desktop capture texture
+                            DataBox mapSource = device.ImmediateContext.MapSubresource(screenTexture, 0, MapMode.Read,
+                                MapFlags.None);
+
+                            // Create Drawing.Bitmap
+
+                            var bitmap = new Bitmap(width, height, PixelFormat.Format32bppRgb); //不能是ARGB
+                            var boundsRect = new System.Drawing.Rectangle(0, 0, width, height);
+
+                            // Copy pixels from screen capture Texture to GDI bitmap
+                            BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
+                            IntPtr sourcePtr = mapSource.DataPointer;
+                            IntPtr destPtr = mapDest.Scan0;
+                            for (int y = 0; y < height; y++)
+                            {
+                                // Copy a single line 
+                                Utilities.CopyMemory(destPtr, sourcePtr, width*4);
+
+                                // Advance pointers
+                                sourcePtr = IntPtr.Add(sourcePtr, mapSource.RowPitch);
+                                destPtr = IntPtr.Add(destPtr, mapDest.Stride);
+                            }
+
+                            // Release source and dest locks
+                            bitmap.UnlockBits(mapDest);
+                            device.ImmediateContext.UnmapSubresource(screenTexture, 0);
+
+                            // Save the output
+                            bitmap.Save("save" + (counter++) + ".bmp");
+
+                            data.Frame = screenTexture;
+
+                            // Capture done
+                            captureDone = true;
                         }
 
-                        // Release source and dest locks
-                        bitmap.UnlockBits(mapDest);
-                        device.ImmediateContext.UnmapSubresource(screenTexture, 0);
-
-                        // Save the output
-                        bitmap.Save("save" + (counter++) + ".bmp");
-
-                        data.Frame = screenTexture;
-
-                        // Capture done
-                        captureDone = true;
+                        duplicatedOutput.ReleaseFrame();
                     }
-
-                    duplicatedOutput.ReleaseFrame();
-                }
-                catch (SharpDXException e)
-                {
-                    if (e.ResultCode.Code != ResultCode.WaitTimeout.Result.Code)
+                    catch (SharpDXException e)
                     {
-                        Console.WriteLine("GetFrame : {0}", e.Descriptor);
+                        if (e.ResultCode.Code != ResultCode.WaitTimeout.Result.Code)
+                        {
+                            Console.WriteLine("GetFrame : {0}", e.Descriptor);
+                        }
                     }
-                }
 
             // Display the texture using system associated viewer
             //Process.Start(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "save.bmp")));

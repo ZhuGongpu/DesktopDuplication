@@ -61,7 +61,12 @@ namespace DXGI_DesktopDuplication
         private void ButtonBase_OnClick(object sender, RoutedEventArgs e)
         {
             //TODO test code here
+
+            
+
             CapturedChangedRects();
+            Console.WriteLine("Click");
+            //CaptureFrame();//TODO 已知bug：只有写成CaptureFrame时不会抛异常
         }
     }
 
