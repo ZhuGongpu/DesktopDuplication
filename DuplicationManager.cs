@@ -22,7 +22,7 @@ namespace DXGI_DesktopDuplication
         ///     value. If the caller specifies an INFINITE time-out interval in the TimeoutInMilliseconds parameter, the time-out
         ///     interval never elapses
         /// </summary>
-        private const int TIME_OUT = 0;
+        private const int TIME_OUT = 130;
 
         private static int counter;
         private static readonly DuplicationManager instance = new DuplicationManager();
@@ -189,8 +189,9 @@ namespace DXGI_DesktopDuplication
                             if (data.DirtyRectangles != null)
                                 foreach (Rectangle dirtyRectangle in data.DirtyRectangles)
                                 {
-                                    Console.WriteLine("DirtyRectangle : {0}    Size : {1}",
-                                        dirtyRectangle, dirtyRectangle.Size.Height*dirtyRectangle.Size.Width);
+                                    Console.WriteLine("DirtyRectangle : {0}    Size : {1}    {2}，{3}",
+                                        dirtyRectangle, dirtyRectangle.Size.Height*dirtyRectangle.Size.Width,
+                                        counter, subCounter);
 
                                     ExtractRect(dirtyRectangle.X, dirtyRectangle.Y, dirtyRectangle.Width,
                                         dirtyRectangle.Height).Save("dirty" + (counter) + "-" + (subCounter++) + ".jpg");
@@ -312,12 +313,16 @@ namespace DXGI_DesktopDuplication
             BitmapData mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
             IntPtr sourcePtr = mapSource.DataPointer;
             IntPtr destPtr = mapDest.Scan0;
-            for (int y = originY; y < originY + height; y++)
+
+            sourcePtr = IntPtr.Add(sourcePtr, originY * mapSource.RowPitch + originX * 4);
+            for (int y = 0; y < height; y++)
             {
                 // Copy a single line 
-                Utilities.CopyMemory(destPtr, IntPtr.Add(sourcePtr, originX*4), width*4);
+                
+                Utilities.CopyMemory(destPtr, sourcePtr, width*4);
 
                 // Advance pointers
+                if(y != height - 1)
                 sourcePtr = IntPtr.Add(sourcePtr, mapSource.RowPitch);
                 destPtr = IntPtr.Add(destPtr, mapDest.Stride);
             }
